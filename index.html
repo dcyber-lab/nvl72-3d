@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a1118">
+<meta name="description" content="NVIDIA GB200 NVL72 机柜的 3D 交互模型：真实接线规则、可拖拽的物理插拔、四张网络的数据流量仿真与故障注入。">
+<title>NVL72 · 3D 交互机柜</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e1a24'/%3E%3Cg fill='%2335506a'%3E%3Crect x='8' y='5' width='16' height='3' rx='1'/%3E%3Crect x='8' y='10' width='16' height='3' rx='1'/%3E%3Crect x='8' y='24' width='16' height='3' rx='1'/%3E%3C/g%3E%3Cg fill='%236fd3a3'%3E%3Crect x='8' y='15' width='16' height='3' rx='1'/%3E%3Crect x='8' y='19.5' width='16' height='3' rx='1'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="./css/style.css">
+<link rel="preload" href="./assets/fonts/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="./assets/fonts/jetbrains-mono-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="modulepreload" href="./vendor/three.module.min.js">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body data-tab="">
+<canvas id="stage" tabindex="0" aria-label="NVL72 机柜 3D 视图。拖动旋转，滚轮缩放，右键平移。"></canvas>
+<div id="vignette"></div>
+<div id="labels"></div>
+
+<header id="topbar">
+  <div class="brand">
+    <div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div><h1>NVL72</h1><p>3D 交互机柜 · 接线、盲插与数据流量</p></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="seg views" id="views" role="group" aria-label="视角"></div>
+  <button class="pill" id="t-xray" aria-pressed="false" title="透视机箱，查看 GPU、NVSwitch 与内部走线 (X)">透视</button>
+  <button class="pill" id="t-labels" aria-pressed="false" title="显示部件标注 (L)">标注</button>
+  <button class="pill icon" id="t-pause" aria-pressed="false" title="暂停 / 继续仿真 (空格)" aria-label="暂停或继续仿真">❙❙</button>
+  <button class="pill primary" id="t-tour">导览</button>
+  <button class="pill icon" id="t-help" title="操作说明与模型依据" aria-label="操作说明与模型依据">?</button>
+</header>
+
+<aside id="left" class="col" aria-label="控制面板">
+  <details class="card" id="sec-traffic" open><summary>数据流量</summary><div class="body" id="traffic"></div></details>
+  <details class="card" id="sec-fault" open><summary>故障注入</summary><div class="body" id="fault"></div></details>
+  <details class="card" id="sec-cabling" open><summary>物理接线<span class="n mono" id="cab-n"></span></summary><div class="body" id="cabling"></div></details>
+  <details class="card" id="sec-layers" open><summary>图层</summary><div class="body" id="layers"></div></details>
+</aside>
+
+<aside id="right" class="col" aria-label="检视面板">
+  <details class="card insp" id="sec-inspect" open><summary>检视<span class="n" id="insp-n"></span></summary><div class="body" id="inspect"></div></details>
+  <details class="card" id="sec-matrix" open><summary>链路矩阵 72 × 18<span class="n mono" id="mx-n"></span></summary><div class="body">
+    <canvas id="matrix" width="600" height="760" aria-label="72 块 GPU 乘 18 颗 NVSwitch 的链路矩阵"></canvas>
+    <div class="legend"><span>利用率 0<span class="ramp"></span>100%</span><span><i style="background:#e5533a"></i>断开</span><span><i style="background:#f2b23e"></i>训练中</span><span><i style="background:#3a4652"></i>无数据</span></div>
+    <p class="hint" id="mx-shape"></p>
+  </div></details>
+  <details class="card" id="sec-alerts" open><summary>告警<span class="n mono" id="al-n"></span></summary><div class="body"><div class="alerts" id="alerts"></div></div></details>
+</aside>
+
+<footer id="kpis" aria-label="实时指标"></footer>
+<div id="log" aria-live="polite"></div>
+<nav id="tabs" aria-label="面板切换"></nav>
+<div id="tooltip" role="tooltip"></div>
+
+<div id="tour" hidden>
+  <div class="step" id="tour-step"></div>
+  <h3 id="tour-title"></h3>
+  <p id="tour-body"></p>
+  <div class="nav"><div class="dots" id="tour-dots"></div><button class="btn" id="tour-prev">上一步</button><button class="btn ok" id="tour-next">下一步</button><button class="btn" id="tour-close">结束</button></div>
+</div>
+
+<dialog id="about">
+  <div class="hd"><h2>操作说明与模型依据</h2><button class="btn" id="about-close">关闭</button></div>
+  <div class="bd">
+    <div><h3>操作</h3>
+      <table>
+        <tr><td>旋转 / 缩放 / 平移</td><td>左键拖动 · 滚轮或双指 · 右键或双指拖动</td></tr>
+        <tr><td>查看部件</td><td>悬停看摘要，单击选中并在右侧检视；双击 GPU 或 NVSwitch 可聚焦</td></tr>
+        <tr><td>拔插线缆</td><td>按住前面板上的插头拖动即拔出，线缆按绳索物理下垂摆动；拖到同型空端口附近会吸附，松手插入。OSFP、QSFP112、RJ45 互不通用</td></tr>
+        <tr><td>拉出 / 推回托盘</td><td>拖动托盘两侧的把手，或双击托盘；后部的 NVLink、汇流排、液冷快接头随之盲插脱开或对接</td></tr>
+        <tr><td>拔出线缆背板</td><td>在后部双击背板，或在检视面板中操作</td></tr>
+        <tr><td>快捷键</td><td><span class="mono">1–5</span> 视角 · <span class="mono">X</span> 透视 · <span class="mono">L</span> 标注 · <span class="mono">空格</span> 暂停 · <span class="mono">F</span> 聚焦选中 · <span class="mono">Esc</span> 取消选中</td></tr>
+      </table>
+    </div>
+    <div><h3>取自 NVIDIA 公开资料的部分</h3>
+      <ul>
+        <li>机柜 600 × 1068 × 2236 mm、48U；自上而下为管理交换机、电源架 × 4、计算托盘 × 10、NVLink 交换托盘 × 9、计算托盘 × 8、电源架 × 4。</li>
+        <li>每个计算托盘 2 颗 Grace CPU 与 4 块 GPU；每个交换托盘 2 颗 NVSwitch、144 个 NVLink 端口；全柜 72 块 GPU、18 颗 NVSwitch、1,296 条链路。</li>
+        <li>单条 NVLink 每方向 400 Gb/s（2 lane × 200 Gb/s，4 对差分线），4 个线缆背板内共 5,184 对无源铜缆。</li>
+        <li>后部自左至右为歧管、2 个背板、居中的汇流排、2 个背板、歧管；NVLink、供电、液冷全部盲插。</li>
+        <li>电源架每架 6 × 5.5 kW = 33 kW，约 50 V 直流汇流排；CPU、GPU、NVSwitch 为冷板液冷。</li>
+      </ul>
+    </div>
+    <div><h3>接线规则</h3>
+      <ul>
+        <li>GPU 端口 <span class="mono">p</span>（1–18）去往交换托盘 <span class="mono">slot = 9 + ⌊(p − 1) / 2⌋</span>，奇数口到 <span class="mono">swt-01</span>，偶数口到 <span class="mono">swt-02</span>。</li>
+        <li>NVSwitch 端口号 <span class="mono">= 4 × tray_index + NN</span>；slot 1–8 对应 tray_index 0–7，slot 18–27 对应 8–17。</li>
+        <li>每块 GPU 到每颗 NVSwitch 恰好 1 条链路，所以断链在 72 × 18 矩阵里的形状可以直接对应到故障部件。</li>
+      </ul>
+    </div>
+    <div><h3>属于建模假设的部分</h3>
+      <ul>
+        <li>每个线缆背板承载各计算托盘同一编号 GPU 的 18 条链路（背板 n 对应 gpu-0n）。公开资料只给出每托盘 4 个后部连接器，没有给出这一分组。</li>
+        <li>前面板端口的排列、线缆在理线槽内的走向、管理交换机的端口分配，以及右侧放置 IB Leaf 与前端以太网交换机的网络柜，均为示意。</li>
+        <li>BlueField-3 端口按 200 Gb/s 计（卡本身最高 400 Gb/s）；功耗、温度、流量强度是按公开量级给出的仿真值，不是实测。</li>
+        <li>报文脉冲的密度对应链路利用率，移动速度只为可视化，不代表信号传播速度。</li>
+      </ul>
+    </div>
+    <div><h3>资料来源</h3>
+      <ul>
+        <li><a href="https://docs.nvidia.com/dgx/dgxgb200-user-guide/hardware.html" target="_blank" rel="noopener">NVIDIA DGX GB200 User Guide：Hardware</a></li>
+        <li><a href="https://docs.nvidia.com/dgx-superpod/reference-architecture-scalable-infrastructure-gb200/latest/dgx-superpod-components.html" target="_blank" rel="noopener">DGX SuperPOD GB200 参考架构：Key Components</a></li>
+        <li><a href="https://docs.nvidia.com/multi-node-nvlink-systems/multi-node-tuning-guide/system.html" target="_blank" rel="noopener">Multi-Node NVLink Systems Tuning Guide</a></li>
+        <li><a href="https://developer.nvidia.com/blog/nvidia-contributes-nvidia-gb200-nvl72-designs-to-open-compute-project" target="_blank" rel="noopener">NVIDIA Developer Blog：GB200 NVL72 设计贡献给 Open Compute Project</a></li>
+      </ul>
+      <p class="hint" style="margin-top:10px">本页是独立制作的教学示意，与 NVIDIA 无隶属关系。渲染使用 three.js（MIT），字体为 IBM Plex Sans 与 JetBrains Mono（OFL）。</p>
+    </div>
+  </div>
+</dialog>
+
+<div id="boot"><div><b>NVL72</b>正在搭建机柜…<div class="bar"><i></i></div></div></div>
+<noscript><div style="position:fixed;inset:0;display:grid;place-items:center;color:#c9d4dc;font:16px sans-serif">此页面需要启用 JavaScript 与 WebGL 2。</div></noscript>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
