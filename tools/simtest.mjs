@@ -6,7 +6,7 @@ const model = new Model();
 const cabling = { linkState: (c) => (c.port === c.home ? 2 : 0), summary: () => ({ total: model.cables.length, plugged: model.cables.length, ok: model.cables.length, wrong: [], open: [] }) };
 const sim = new Sim(model, cabling);
 const assert = (c, m) => { if (!c) { console.error('FAIL', m); process.exitCode = 1; } else console.log('ok  ', m); };
-const run = (sec = 1) => { for (let i = 0; i < sec * 20; i++) sim.step(0.05, (sim.time || 0)); };
+const run = (sec = 1) => { for (let i = 0; i < sec * 20; i++) sim.step(0.05, sim.time); };
 
 // wiring rule from the deck: slot 27 gpu-03 -> NVSwitch port 71 on every switch
 const g = gpuOf(trayIndexOfSlot(27), 3);
@@ -74,4 +74,20 @@ assert(sim.stats.powerKW > 112 && sim.stats.powerKW < 124, 'full-load rack power
 for (const s of model.shelves.slice(0, 5)) s.seated = false;
 run(12);
 assert(sim.stats.cap < 1 && sim.stats.powerKW <= 99.5, `3 shelves: capped to ${sim.stats.powerKW.toFixed(1)} kW (cap ${(sim.stats.cap * 100).toFixed(0)}%)`);
-console.log('alerts:', sim.alerts.map((a) => a.title).join(' | '));
+assert(sim.alerts.some((a) => a.key === 'cap'), 'power cap alert raised');
+// the cap must come back at any step size once the shelves return
+for (const s of model.shelves) s.seated = true;
+for (let i = 0; i < 40 * 120; i++) sim.step(1 / 120, sim.time);
+assert(sim.stats.cap === 1 && sim.stats.powerKW > 112, `cap recovers at 120 Hz steps: ${sim.stats.powerKW.toFixed(1)} kW`);
+// idle rack with shelves removed: redundancy warning at every count, power off at zero
+sim.pattern = 'idle'; sim.intensity = 0; sim.dirty = true;
+for (const s of model.shelves.slice(0, 5)) s.seated = false;
+run(6);
+assert(sim.alerts.some((a) => a.key === 'psu') && sim.stats.cap === 1, 'idle on 3 shelves: redundancy warning, no cap');
+for (const s of model.shelves) s.seated = false;
+run(3);
+assert(model.powerOff && model.countLinksUp() === 0 && sim.stats.powerKW === 0 && sim.alerts.some((a) => a.key === 'poweroff'), 'no shelves: rack is dark, every link down');
+for (const s of model.shelves) s.seated = true;
+run(6);
+assert(!model.powerOff && model.countLinksUp() === 1296, 'shelves back: links retrain');
+console.log('alerts:', sim.alerts.map((a) => a.title).join(' | ') || '(none)');

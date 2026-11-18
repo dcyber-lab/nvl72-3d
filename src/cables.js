@@ -344,8 +344,13 @@ export class Cabling {
     this.portPos(port, c.origin);
     c.tailDir.set(0, 0, 1);
     this._dressed(c, c.origin, c.rope.p);
-    c.rope.L = pathLength(c.rope.p) + SLACK;
-    c.rope.seg = c.rope.L / (N - 1);
+    c.seatLen = pathLength(c.rope.p);
+    if (!c.rope.fixed) {
+      // a cord's length is set once, from its planned port; re-seating elsewhere does not stretch it
+      c.rope.L = c.seatLen + SLACK;
+      c.rope.seg = c.rope.L / (N - 1);
+      c.rope.fixed = true;
+    }
     this._writeWhip(c);
     this._placePlug(c);
     if (!instant) this.onEvent({ type: 'plug', cable: c, port });
@@ -444,6 +449,7 @@ export class Cabling {
         c.pendingPort = port;
       } else this.plug(c, port);
     } else if (c.state === 'held') {
+      c.rope.q.set(c.rope.p); // the pinned tail kept an old position in q: start from rest
       c.state = 'free';
       c.rope.asleep = false;
       c.rope.still = 0;
@@ -459,25 +465,40 @@ export class Cabling {
     return i;
   }
 
+  // run fn on the cabling clock (the same one the staggered plug / unplug queue uses)
+  at(delay, fn) {
+    this.queue.push({ at: this.time + delay, fn });
+  }
+
+  // re-home a cord once its tray is back in the rack; waits while the tray is still sliding in
+  _queueRehome(c, delay) {
+    this.at(delay, () => {
+      const u = c.home.unit;
+      if (Math.abs(u.pull) > 0.02 && u.pullTarget <= 0.02) this._queueRehome(c, 0.2);
+      else this.rehome(c);
+    });
+  }
+
   replugUnit(unit, stagger = 0.07) {
     let i = 0;
     for (const c of this.model.cables) {
-      if (c.home.unit === unit && c.port !== c.home) this.queue.push({ at: this.time + i++ * stagger, fn: () => this.rehome(c) });
+      if (c.home.unit === unit && !(c.port === c.home && c.state === 'plugged')) this._queueRehome(c, i++ * stagger);
     }
     return i;
   }
 
+  // put a cord back into its planned port; false when that is not possible right now
   rehome(c) {
-    if (c.port === c.home && c.state === 'plugged') return;
-    if (c.home.cable && c.home.cable !== c) return; // someone else sits in our port
+    if (c.port === c.home && (c.state === 'plugged' || c.state === 'inserting')) return true;
+    if (c.home.cable && c.home.cable !== c) return false; // someone else sits in our port
+    if (Math.abs(c.home.unit.pull) > 0.02) return false; // the tray is out of the rack
     if (c.state === 'plugged') {
       // wrong port: lift out, then drop into the planned one
       c.port.cable = null;
       c.port = null;
     }
-    if (Math.abs(c.home.unit.pull) > 0.02) return;
     c.rope.asleep = false;
-    this.plug(c, c.home);
+    return this.plug(c, c.home);
   }
 
   unplugAll(stagger = 0.012) {
@@ -487,11 +508,12 @@ export class Cabling {
 
   autoWire(stagger = 0.03) {
     let i = 0;
-    const list = this.model.cables.filter((c) => !(c.port === c.home && c.state === 'plugged'));
+    const list = this.model.cables.filter((c) => !(c.port === c.home && (c.state === 'plugged' || c.state === 'inserting')));
     // first lift every misplaced plug out so that the planned ports are free
-    for (const c of list) if (c.state === 'plugged') { c.port.cable = null; c.port = null; this._release(c); }
+    for (const c of list) if (c.state === 'plugged' && c.port) { c.port.cable = null; c.port = null; this._release(c); }
     list.sort((a, b) => a.home.unit.u - b.home.unit.u || a.home.x - b.home.x);
-    for (const c of list) this.queue.push({ at: this.time + 0.1 + i++ * stagger, fn: () => this.rehome(c) });
+    for (const c of list) this._queueRehome(c, 0.1 + i++ * stagger);
+    if (list.length) this.model.emit('cabling');
     return list.length;
   }
 
@@ -597,7 +619,7 @@ export class Cabling {
         // follows a moving tray; pops out when the cord runs out of slack
         this.portPos(c.port, c.origin);
         this._dressed(c, c.origin, c.rope.p);
-        if (pathLength(c.rope.p) > c.rope.L + 0.02) {
+        if (pathLength(c.rope.p) > Math.max(c.rope.L, c.seatLen) + 0.02) {
           this.unplug(c, { silent: true });
           this.onEvent({ type: 'yank', cable: c });
         } else if (Math.abs(c.port.unit.pull - c.port.unit.pullTarget) < 1e-5) keep = false;
@@ -684,7 +706,7 @@ export class Cabling {
   linkState(c) {
     if (c.state !== 'plugged' || !c.port) return 0;
     const u = c.port.unit;
-    if (!u.seated || u.fault === 'offline') return 0;
+    if (!u.seated || u.fault === 'offline' || (this.model.powerOff && u.kind !== 'mgmt')) return 0;
     return c.port === c.home ? 2 : 1;
   }
 

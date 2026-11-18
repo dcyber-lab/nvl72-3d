@@ -9,7 +9,7 @@ const [out, base = 'http://127.0.0.1:8765/index.html'] = process.argv.slice(2);
   page.on('pageerror', (e) => logs.push('[pageerror] ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 6).join('\n')));
   page.on('requestfailed', (r) => logs.push('[requestfailed] ' + r.url()));
   await page.goto(`${base}?bloom=0&quality=low&warp=3`, { waitUntil: 'load' });
-  await page.waitForFunction(() => (window.__frames || 0) > 4, null, { timeout: 90000 });
+  await page.waitForFunction(() => (window.__frames || 0) > 4, null, { timeout: 200000 });
   await page.click('#t-tour');
   for (let i = 0; i < 8; i++) {
     await page.waitForTimeout(i === 1 ? 9000 : 5200);

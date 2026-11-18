@@ -158,6 +158,7 @@ export class Model {
     this.linkFault = new Uint8Array(N_LINK); // 1 = pair/connector fault, 2 = degraded (errors)
     this.cart = Array.from({ length: N_CART }, (_, i) => ({ id: i, name: `线缆背板 ${i + 1}`, seated: true, pull: 0, pullTarget: 0 }));
     this.telemetryDown = false;
+    this.powerOff = false; // true while no power shelf is seated
 
     // link state machine: 0 down, 1 training, 2 up
     this.linkPhys = new Uint8Array(N_LINK);
@@ -236,11 +237,11 @@ export class Model {
   // ---- physical link availability -----------------------------------------
   gpuAlive(g) {
     const tray = this.compute[g >> 2];
-    return tray.seated && !tray.fault && !this.gpuFault[g];
+    return tray.seated && !tray.fault && !this.gpuFault[g] && !this.powerOff;
   }
   swAlive(s) {
     const tray = this.switches[s >> 1];
-    return tray.seated && !tray.fault && !this.swFault[s];
+    return tray.seated && !tray.fault && !this.swFault[s] && !this.powerOff;
   }
 
   recomputePhys(now, instant = false) {

@@ -9,7 +9,7 @@ import { buildFloor, buildRack, buildSurroundings } from './rack.js';
 import { FlowTable, ribbonShared, tickRibbons } from './ribbon.js';
 import { buildNvlink, buildCooling, buildPower } from './links.js';
 import { Cabling, buildNetDevices } from './cables.js';
-import { Sim } from './sim.js';
+import { Sim, PATTERNS } from './sim.js';
 import { Interaction } from './interact.js';
 import { createUI } from './ui.js';
 import { createTour } from './tour.js';
@@ -167,7 +167,7 @@ class App {
     cabling.onEvent = (e) => {
       if (e.type === 'yank') {
         // a tray dragged out with its cords still in pops all of them: say it once
-        if (this.wall - (this._lastYank || 0) > 2) ui.toast('线缆被拉脱', `${e.cable.home.unit.id}：托盘拉出前应先拔掉前面板线缆`, 'crit');
+        if (this.wall - (this._lastYank || 0) > 2) ui.toast('线缆被拉脱', `${(e.cable.lastPort || e.cable.home).unit.id}：托盘拉出前应先拔掉前面板线缆`, 'crit');
         this._lastYank = this.wall;
       }
       else if (e.type === 'plug') {
@@ -181,6 +181,14 @@ class App {
       if (this._quiet || this.simTime < 4) return; // stay silent while the fabric first trains up
       if (raised) ui.toast(a.sev === 'info' ? '提示' : '告警', `${a.title}`, a.sev === 'info' ? 'info' : 'crit');
     };
+    // orbiting by hand leaves the named view, so later layout changes do not pull the camera back
+    this.stage.controls.addEventListener('start', () => {
+      this.pilot.cancel();
+      if (this.view) {
+        this.view = null;
+        ui.syncToggles();
+      }
+    });
     window.addEventListener('resize', () => { this.stage.resize(); this.onLayout(true); });
     window.addEventListener('keydown', (e) => {
       if (e.target.closest('input, dialog, select, textarea')) return;
@@ -216,7 +224,8 @@ class App {
     if (q.get('heat') === '1') this.setHeat(true);
     if (q.get('sel')) {
       const [type, id] = q.get('sel').split(':');
-      this.select({ type, id: isNaN(+id) ? id : +id });
+      const ent = this.validEntity({ type, id: id !== undefined && id !== '' && !isNaN(+id) ? +id : id });
+      if (ent) this.select(ent);
     }
     if (q.get('fault')) this.after(1.6, () => this.inject(q.get('fault')));
     if (q.get('tour')) this.after(0.4, () => this.tour.start(+q.get('tour') - 1 || 0));
@@ -254,6 +263,26 @@ class App {
   }
 
   // ---- entities --------------------------------------------------------------
+  // returns the entity if it names something that exists, else null (deep links, alert targets)
+  validEntity(ent) {
+    if (!ent || typeof ent.type !== 'string') return null;
+    const m = this.model;
+    const int = (n) => Number.isInteger(ent.id) && ent.id >= 0 && ent.id < n;
+    switch (ent.type) {
+      case 'unit': return m.unitById.has(ent.id) ? ent : null;
+      case 'gpu': return int(N_GPU) ? ent : null;
+      case 'nvsw': return int(N_NVSW) ? ent : null;
+      case 'link': return int(N_LINK) ? ent : null;
+      case 'cable': return int(m.cables.length) ? ent : null;
+      case 'port': return int(m.ports.length) ? ent : null;
+      case 'cart': return int(4) ? ent : null;
+      case 'netdev': return this.cabling.netDevs.has(ent.id) ? ent : null;
+      case 'busbar': return { type: 'busbar', id: 0 };
+      case 'manifold': return ent.id === 'supply' || ent.id === 'return' ? ent : null;
+      default: return null;
+    }
+  }
+
   entityOf(h) {
     switch (h.type) {
       case 'unit': return h.unit.kind === 'blank' && !h.unit.hcm ? null : { type: 'unit', id: h.unit.id };
@@ -315,17 +344,19 @@ class App {
   }
 
   // ---- selection + highlight --------------------------------------------------
-  select(ent, { focus = false, reveal = false } = {}) {
+  select(ent, { focus = false, reveal = false, noTab = false } = {}) {
+    ent = this.validEntity(ent);
     if (ent && ent.type === 'unit') {
       const u = this.model.unitById.get(ent.id);
-      if (!u || (u.kind === 'blank' && !u.hcm)) ent = null;
+      if (u.kind === 'blank' && !u.hcm) ent = null;
     }
     this.selection = ent;
     if (ent && reveal && (ent.type === 'gpu' || ent.type === 'nvsw' || ent.type === 'link') && !this.xray) this.setXray(true);
     this.applyHighlight();
     this.ui.renderInspector();
     this.ui.drawMatrix();
-    if (ent && this.ui.isNarrow() && document.body.dataset.tab !== 'matrix') this.ui.setTab('inspect');
+    // on phones show the inspector sheet, but never while something is being dragged
+    if (ent && !noTab && this.ui.isNarrow() && !['matrix', 'inspect'].includes(document.body.dataset.tab)) this.ui.setTab('inspect');
     if (ent && focus) this.focus(ent);
   }
 
@@ -391,7 +422,7 @@ class App {
   }
 
   onGrab(c) {
-    this.select({ type: 'cable', id: c.id });
+    this.select({ type: 'cable', id: c.id }, { noTab: true });
   }
 
   // ---- camera ----------------------------------------------------------------
@@ -497,6 +528,7 @@ class App {
   // ---- display toggles --------------------------------------------------------
   setXray(on, instant = false) {
     this.xray = on;
+    for (const u of this.model.units) if (u.pull > 0.05 || u._open) this._syncSkin(u);
     this._xrayT = instant ? (on ? 1 : 0) : this._xrayT ?? 0;
     if (instant) this._applyXray(this._xrayT);
     this.ui.syncToggles();
@@ -546,6 +578,7 @@ class App {
   }
 
   setPattern(p) {
+    if (!PATTERNS[p]) return;
     this.sim.pattern = p;
     this.sim.scenario = null;
     if (p !== 'idle' && this.sim.intensity < 0.05) this.sim.intensity = 0.8;
@@ -575,12 +608,18 @@ class App {
   }
 
   togglePull(u) {
+    if (u.pulling) return; // already on its way out
     if (u.pullTarget > 0.02) {
       this.setPull(u, 0);
     } else {
       // a technician unplugs the front-panel cords before sliding a tray out
       const n = this.cabling.unplugUnit(u, 0.045);
-      this.after(n * 0.045 + (n ? 0.3 : 0), () => this.setPull(u, 0.56));
+      u.pulling = true;
+      // same clock as the unplug queue, so the tray never leaves before its cords are out
+      this.cabling.at(n * 0.045 + (n ? 0.3 : 0), () => {
+        u.pulling = false;
+        this.setPull(u, 0.56);
+      });
     }
     this.ui.renderInspector();
   }
@@ -594,12 +633,15 @@ class App {
       u.seated = seated;
       this._onSeat(u);
     }
-    // show the internals of a tray that is out of the rack
+    this._syncSkin(u);
+  }
+
+  // a tray that is out of the rack gets a see-through lid so its internals show
+  _syncSkin(u) {
     const open = u.pull > 0.05 && !this.xray;
-    if (u._open !== open) {
-      u._open = open;
-      for (const ch of u.group.children) if (ch.material === this.M.chassis || ch.material === this.M.chassisOpen) ch.material = open ? this.M.chassisOpen : this.M.chassis;
-    }
+    if (!!u._open === open) return;
+    u._open = open;
+    for (const ch of u.group.children) if (ch.material === this.M.chassis || ch.material === this.M.chassisOpen) ch.material = open ? this.M.chassisOpen : this.M.chassis;
   }
 
   _onSeat(u) {
@@ -667,8 +709,7 @@ class App {
     units.sort((a, b) => a.u - b.u);
     units.forEach((u, i) => this.after(0.9 + i * 0.085, () => { u.group.visible = true; this.setPull(u, 0); }));
     const tEnd = 0.9 + units.length * 0.085 + 0.9;
-    this.after(tEnd, () => cabling.autoWire(0.02));
-    this.after(tEnd + 6.2, () => { this._quiet = false; this.ui.toast('装配完成', '盲插对接、前面板接线、链路训练均已完成', 'ok'); });
+    this.after(tEnd, () => { cabling.autoWire(0.02); this._asmWatch = true; });
   }
 
   // ---- faults ----------------------------------------------------------------
@@ -762,9 +803,10 @@ class App {
       case 'pull': this.togglePull(u); return;
       case 'cables': {
         const cs = model.cables.filter((c) => c.home.unit === u);
-        if (cs.some((c) => c.port !== c.home || c.state !== 'plugged')) cabling.replugUnit(u);
-        else cabling.unplugUnit(u);
-        this.after(0.9, () => this.ui.renderInspector());
+        if (cs.some((c) => !(c.port === c.home && (c.state === 'plugged' || c.state === 'inserting')))) {
+          if (Math.abs(u.pull) > 0.02) this.ui.toast('托盘未到位', `${u.id} 还在机柜外，推回后再接线`, 'crit');
+          else cabling.replugUnit(u);
+        } else cabling.unplugUnit(u);
         return;
       }
       case 'offline': u.fault = u.fault ? null : 'offline'; break;
@@ -782,7 +824,6 @@ class App {
         else if (c.home.cable && c.home.cable !== c) this.ui.toast('端口被占用', `${c.home.unit.id} · ${c.home.label} 上插着 ${c.home.cable.label}，先把它拔掉`, 'crit');
         else if (Math.abs(c.home.unit.pull) > 0.02) this.ui.toast('托盘未到位', `${c.home.unit.id} 还在机柜外，推回后再接线`, 'crit');
         else cabling.rehome(c);
-        this.after(0.5, () => this.ui.renderInspector());
         return;
       }
       case 'cart': this.toggleCart(sel.id); return;
@@ -880,6 +921,7 @@ class App {
       this._cablingDirty = false;
       cabling.refreshVisuals();
       ui.syncCabling();
+      if (this.selection && this.selection.type === 'port') ui.renderInspector();
     }
 
     // flows -> data texture
@@ -915,6 +957,11 @@ class App {
     this._uiT -= dt;
     if (this._uiT <= 0) {
       this._uiT = 0.2;
+      if (this._asmWatch && cabling.summary().ok === model.cables.length && sim.stats.linksUp === N_LINK) {
+        this._asmWatch = false;
+        this._quiet = false;
+        ui.toast('装配完成', '盲插对接、前面板接线、链路训练均已完成', 'ok');
+      }
       this._slowVisuals(wall);
       ui.syncKpis();
       ui.syncInspector();
@@ -986,7 +1033,7 @@ class App {
     }
     for (const u of model.units) {
       if (u.ledPower === undefined) continue;
-      const on = u.seated && u.fault !== 'offline';
+      const on = u.seated && u.fault !== 'offline' && !(model.powerOff && u.kind !== 'mgmt');
       leds.set(u.ledPower, on ? 1 : 0);
       let h = on ? 1 : 0;
       if (u.fault === 'failed' || u.leak) h = blink ? 3 : 0;

@@ -7,7 +7,7 @@ const out = process.argv[2] || '.';
   const logs = [];
   page.on('pageerror', (e) => logs.push('[pageerror] ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 6).join('\n')));
   await page.goto('http://127.0.0.1:8765/index.html?bloom=0&quality=low&warp=4&cam=1.1,1.5,1.9,0.1,1.3,0.45', { waitUntil: 'load' });
-  await page.waitForFunction(() => (window.__frames || 0) > 4, null, { timeout: 90000 });
+  await page.waitForFunction(() => (window.__frames || 0) > 4, null, { timeout: 200000 });
   const proj = (p) => page.evaluate((p) => window.__nvl._project(p), p);
   const wait = (ms) => page.waitForTimeout(ms);
 

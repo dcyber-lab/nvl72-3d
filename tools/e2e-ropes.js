@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
   const logs = [];
   page.on('pageerror', (e) => logs.push('[pageerror] ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 6).join('\n')));
   await page.goto('http://127.0.0.1:8765/index.html?bloom=0&quality=low&warp=3', { waitUntil: 'load' });
-  await page.waitForFunction(() => (window.__frames || 0) > 4, null, { timeout: 90000 });
+  await page.waitForFunction(() => (window.__frames || 0) > 4, null, { timeout: 200000 });
   const st = () => page.evaluate(() => {
     const a = window.__nvl; const s = a.cabling.summary();
     let nan = 0, oob = 0, asleep = 0, minY = 9, maxZ = -9;

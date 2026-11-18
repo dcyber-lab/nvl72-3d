@@ -303,6 +303,14 @@ export function createUI(app) {
       const cells = insp.querySelectorAll('.ports button');
       for (let i = 0; i < cells.length; i++) cells[i].style.background = v.strip(i);
     }
+    // buttons whose label depends on state are refreshed in place, never replaced mid-click
+    if (v.btns) for (const el of insp.querySelectorAll('[data-btn]')) {
+      const b = v.btns[el.dataset.btn];
+      if (!b) continue;
+      if (el.textContent !== b[0]) el.textContent = b[0];
+      const cn = `btn ${b[1]}`;
+      if (el.className !== cn) el.className = cn;
+    }
     if (v.meters) for (const [k, w] of Object.entries(v.meters)) {
       const el = insp.querySelector(`[data-meter="${k}"]`);
       if (el) el.style.width = `${Math.max(0, Math.min(100, w * 100))}%`;
@@ -605,6 +613,8 @@ function kv(rows) {
 }
 const L = (k, cls = 'mono') => `<span class="${cls}" data-live="${k}"></span>`;
 const btn = (act, label, cls = '', arg = '') => `<button class="btn ${cls}" data-act="${act}" data-arg="${arg}">${label}</button>`;
+const liveBtn = (act) => `<button class="btn" data-act="${act}" data-btn="${act}"></button>`;
+const homed = (c) => c.port === c.home && (c.state === 'plugged' || c.state === 'inserting');
 
 function inspector(app, sel) {
   const { model, sim, cabling } = app;
@@ -623,20 +633,26 @@ function inspector(app, sel) {
       const u = model.unitById.get(sel.id);
       const cs = model.cables.filter((c) => c.home.unit === u);
       const cabRow = () => `${cs.filter((c) => cabling.linkState(c) === 2).length} / ${cs.length}`;
-      const pullBtn = app.canPull(u) ? btn('pull', u.pullTarget > 0.02 ? '推回机柜' : '拉出托盘', u.pullTarget > 0.02 ? 'ok' : '') : '';
-      const cabBtn = cs.length ? btn('cables', cs.some((c) => c.port !== c.home || c.state !== 'plugged') ? '接回线缆' : '拔掉线缆') : '';
+      const pullBtn = app.canPull(u) ? liveBtn('pull') : '';
+      const cabBtn = cs.length ? liveBtn('cables') : '';
+      const unitBtns = () => ({
+        pull: u.pullTarget > 0.02 || u.pulling ? ['推回机柜', 'ok'] : ['拉出托盘', ''],
+        cables: cs.some((c) => !homed(c)) ? ['接回线缆', 'ok'] : ['拔掉线缆', ''],
+        offline: u.fault ? ['恢复上电', 'ok'] : ['下电离线', 'warn'],
+        swfail: u.fault ? ['恢复', 'ok'] : ['整托盘故障', 'warn'],
+      });
       if (u.kind === 'compute') {
         const gs = [0, 1, 2, 3].map((k) => u.trayIndex * 4 + k);
         return {
           kick: '计算托盘 · 1RU · 2 × Grace CPU + 4 × GPU', title: u.id, tag: `U${u.u}`,
           html: kv([['状态', L('state', '')], ['NVLink 在线', L('links')], ['NVLink 发 / 收', L('rate')], ['功耗', L('kw')], ['前面板线缆', L('cab')]]) +
             `<div class="list">${gs.map((g) => `<button data-sel="gpu:${g}" data-focus="1"><span class="mono">${gpuName(g)}</span><span class="r" data-live="g${g}"></span></button>`).join('')}</div>
-            <div class="row">${pullBtn}${cabBtn}${btn('offline', u.fault ? '恢复上电' : '下电离线', u.fault ? 'ok' : 'warn')}</div>
+            <div class="row">${pullBtn}${cabBtn}${liveBtn('offline')}</div>
             <p class="note">前面板人工布线：4 × ConnectX-7（InfiniBand）、2 × BlueField-3（以太网，每块双口）、3 个 RJ45 管理口。后部全部盲插：4 个 NVLink 连接器（每块 GPU 18 口）、汇流排、液冷快接头。</p>`,
           live: () => ({
             state: unitState(u), links: `${gs.reduce((a, g) => a + model.gpuLinksUp(g), 0)} / 72`,
             rate: `${fmtRate(gs.reduce((a, g) => a + sim.gpuTx[g], 0))} / ${fmtRate(gs.reduce((a, g) => a + sim.gpuRx[g], 0))}`,
-            kw: `${(u.kw || 0).toFixed(1)} kW`, cab: cabRow(),
+            kw: `${(u.kw || 0).toFixed(1)} kW`, cab: cabRow(), btns: unitBtns(),
             ...Object.fromEntries(gs.map((g) => [`g${g}`, `${model.gpuLinksUp(g)}/18 · ${pct(sim.gpuLoad[g])} · ${sim.gpuTemp[g].toFixed(0)} °C`])),
           }),
         };
@@ -648,12 +664,12 @@ function inspector(app, sel) {
           html: kv([['状态', L('state', '')], ['端口在线', L('links')], ['吞吐（每方向）', L('rate')], ['功耗', L('kw')], ['管理口线缆', L('cab')]]) +
             `<div class="meter"><i data-meter="thr"></i></div>
             <div class="list">${ss.map((s) => `<button data-sel="nvsw:${s}" data-focus="1"><span class="mono">${swName(s)}</span><span class="r" data-live="s${s}"></span></button>`).join('')}</div>
-            <div class="row">${pullBtn}${cabBtn}${btn('swfail', u.fault ? '恢复' : '整托盘故障', u.fault ? 'ok' : 'warn')}</div>
+            <div class="row">${pullBtn}${cabBtn}${liveBtn('swfail')}</div>
             <p class="note">144 个 NVLink 端口 × 400 Gb/s，合计 57.6 Tb/s。前面板只有管理口：2 个 NVOS 管理口、1 个 BMC、1 个串口。${u.leader ? 'NMX-C 与 NMX-T 只在这个 leader 托盘上运行，全域的拓扑与遥测经它的管理口读出。' : '托盘上没有租户系统，数据全部属于平台侧。'}</p>`,
           live: () => {
             const thr = (sim.swThrough[ss[0]] + sim.swThrough[ss[1]]) / 2;
             return {
-              state: unitState(u), links: `${model.swLinksUp(ss[0]) + model.swLinksUp(ss[1])} / 144`, rate: `${fmtRate(thr)} / 57.6 Tb/s`, kw: `${(u.kw || 0).toFixed(2)} kW`, cab: cabRow(),
+              state: unitState(u), links: `${model.swLinksUp(ss[0]) + model.swLinksUp(ss[1])} / 144`, rate: `${fmtRate(thr)} / 57.6 Tb/s`, kw: `${(u.kw || 0).toFixed(2)} kW`, cab: cabRow(), btns: unitBtns(),
               ...Object.fromEntries(ss.map((s) => [`s${s}`, `${model.swLinksUp(s)}/72 · ${sim.swTemp[s].toFixed(0)} °C`])),
               meters: { thr: thr / (144 * LINK_GBPS) },
             };
@@ -665,7 +681,7 @@ function inspector(app, sel) {
           kick: '电源架 · 6 × 5.5 kW', title: u.name, zh: true, tag: `U${u.u}`, color: 'var(--pwr)',
           html: kv([['状态', L('state', '')], ['额定输出', `${SHELF_KW} kW`], ['当前分担', L('share')], ['全柜可用', L('cap')]]) + `<div class="row">${pullBtn}</div>
             <p class="note">电源架把交流转换成约 50 V 直流，经机柜后部的汇流排送到每个托盘。8 架共 264 kW，对 120 kW 的整柜负载构成 N+N 冗余；拉出超过 4 架后可用功率不足，GPU 会被限功率。</p>`,
-          live: () => ({ state: unitState(u), share: u.seated && sim.stats.shelves ? `${(sim.stats.powerKW / sim.stats.shelves).toFixed(1)} kW` : '0 kW', cap: `${sim.stats.capKW} kW（${sim.stats.shelves}/8 架）` }),
+          live: () => ({ state: unitState(u), share: u.seated && sim.stats.shelves ? `${(sim.stats.powerKW / sim.stats.shelves).toFixed(1)} kW` : '0 kW', cap: `${sim.stats.capKW} kW（${sim.stats.shelves}/8 架）`, btns: unitBtns() }),
         };
       }
       if (u.kind === 'mgmt') {
@@ -687,12 +703,13 @@ function inspector(app, sel) {
         html: kv([['状态', L('state', '')], ['NVLink 在线', L('links')], ['发送 / 接收', L('rate')], ['负载 / 温度', L('load')], ['线缆背板', `背板 ${gpuNN(g)}`], ['NVSwitch 侧端口号', `<span class="mono">#${g + 1}</span> = 4 × ${g >> 2} + ${gpuNN(g)}`]]) +
           `<div><div class="lbl" style="margin-bottom:4px"><span>端口 p1 – p18（每格 1 条链路，去往 18 颗 NVSwitch）</span></div><div class="ports p18">${Array.from({ length: 18 }, (_, s) => `<button data-sel="link:${g * 18 + s}" title="p${s + 1} → ${swName(s)}" aria-label="端口 ${s + 1}"></button>`).join('')}</div></div>
           <div class="list"><button data-sel="unit:${tray.id}"><span class="mono">${tray.id}</span><span class="r">所在计算托盘</span></button></div>
-          <div class="row">${btn('gpureset', model.gpuFault[g] ? '恢复 GPU' : '复位 GPU', model.gpuFault[g] ? 'ok' : 'warn')}${btn('pairA', '设为点对点 A')}${btn('pairB', '设为点对点 B')}${btn('incast', '设为汇聚目标')}</div>
+          <div class="row">${liveBtn('gpureset')}${btn('pairA', '设为点对点 A')}${btn('pairB', '设为点对点 B')}${btn('incast', '设为汇聚目标')}</div>
           <p class="note">端口 <code>p</code> 去往 <code>slot = 9 + ⌊(p − 1) / 2⌋</code>；奇数口到 <code>swt-01</code>，偶数口到 <code>swt-02</code>。每断开 1 条，这块 GPU 的 NVLink 带宽减少 1/18。</p>`,
         live: () => ({
           state: model.gpuFault[g] ? '<span class="st bad">复位中</span>' : !tray.seated || tray.fault ? '<span class="st bad">托盘离线</span>' : model.gpuLinksUp(g) < 18 ? '<span class="st warn">降级</span>' : '<span class="st ok">Healthy</span>',
           links: `${model.gpuLinksUp(g)} / 18`, rate: `${fmtRate(sim.gpuTx[g])} / ${fmtRate(sim.gpuRx[g])}`, load: `${pct(sim.gpuLoad[g])} · ${sim.gpuTemp[g].toFixed(0)} °C`,
           strip: (i) => cellColor(app, g * 18 + i),
+          btns: { gpureset: model.gpuFault[g] ? ['恢复 GPU', 'ok'] : ['复位 GPU', 'warn'] },
         }),
       };
     }
@@ -704,12 +721,13 @@ function inspector(app, sel) {
         html: kv([['状态', L('state', '')], ['端口在线', L('links')], ['吞吐（每方向）', L('rate')], ['温度', L('temp')], ['对应 GPU 端口', `<span class="mono">p${s + 1}</span>（每块 GPU 的第 ${s + 1} 口）`]]) +
           `<div><div class="lbl" style="margin-bottom:4px"><span>端口 #1 – #72（每 4 口对应 1 个计算托盘）</span></div><div class="ports p72">${Array.from({ length: 72 }, (_, g) => `<button data-sel="link:${g * 18 + s}" title="#${g + 1} → ${gpuName(g)}" aria-label="端口 ${g + 1}" style="${g % 4 === 3 ? 'margin-right:2px' : ''}"></button>`).join('')}</div></div>
           <div class="list"><button data-sel="unit:${tray.id}"><span class="mono">${tray.id}</span><span class="r">所在交换托盘</span></button></div>
-          <div class="row">${btn('nvswfail', model.swFault[s] ? '恢复' : '注入故障', model.swFault[s] ? 'ok' : 'warn')}</div>
+          <div class="row">${liveBtn('nvswfail')}</div>
           <p class="note">端口号 <code>= 4 × tray_index + NN</code>：slot 1–8 对应 tray_index 0–7，slot 18–27 对应 8–17。18 颗 NVSwitch 的端口分配完全相同。</p>`,
         live: () => ({
           state: model.swFault[s] || tray.fault ? '<span class="st bad">故障</span>' : !tray.seated ? '<span class="st bad">托盘已拉出</span>' : '<span class="st ok">Healthy</span>',
           links: `${model.swLinksUp(s)} / 72`, rate: `${fmtRate(sim.swThrough[s] / 2)} / 28.8 Tb/s`, temp: `${sim.swTemp[s].toFixed(0)} °C`,
           strip: (i) => cellColor(app, i * 18 + s),
+          btns: { nvswfail: model.swFault[s] ? ['恢复', 'ok'] : ['注入故障', 'warn'] },
         }),
       };
     }
@@ -721,13 +739,14 @@ function inspector(app, sel) {
           `<div class="meter"><i data-meter="tx"></i></div><div class="meter" style="--c:#d9ff86"><i data-meter="rx"></i></div>` +
           kv([['PortXmitDataExtended', L('xd')], ['PortRcvDataExtended', L('rd')], ['PortXmitWaitExtended', L('xw')], ['LinkDownedCounterExtended', L('ld')], ['SymbolErrorCounterExtended', L('se')]]) +
           `<div class="list"><button data-sel="gpu:${g}" data-focus="1"><span class="mono">${gpuName(g)}</span><span class="r">GPU 端口 p${s + 1}</span></button><button data-sel="nvsw:${s}" data-focus="1"><span class="mono">${swName(s)}</span><span class="r">NVSwitch 端口 #${g + 1}</span></button></div>
-          <div class="row">${btn('linkcut', model.linkFault[l] === 1 ? '恢复链路' : '断开此链路', model.linkFault[l] === 1 ? 'ok' : 'warn')}${btn('linkber', model.linkFault[l] === 2 ? '清除误码' : '注入误码', model.linkFault[l] === 2 ? 'ok' : '')}</div>
+          <div class="row">${liveBtn('linkcut')}${liveBtn('linkber')}</div>
           <p class="note">计数器名称与 NMX-T 一致。方向取值：GPU 到 NVSwitch 用 GPU 端口的发送计数。单条断开时优先怀疑背板线对或某一端的连接器。</p>`,
         live: () => ({
           state: linkStateText(app, l) + (model.linkFault[l] === 2 ? ' <span class="st warn">误码</span>' : ''),
           tx: `${pct(sim.tx[l])} · ${fmtRate(sim.tx[l] * LINK_GBPS)}`, rx: `${pct(sim.rx[l])} · ${fmtRate(sim.rx[l] * LINK_GBPS)}`,
           xd: fmtBytes(sim.xmitData[l]), rd: fmtBytes(sim.rcvData[l]), xw: nf.format(Math.round(sim.xmitWait[l])), ld: String(model.linkDowned[l]), se: nf.format(Math.round(sim.symErr[l])),
           meters: { tx: sim.tx[l], rx: sim.rx[l] },
+          btns: { linkcut: model.linkFault[l] === 1 ? ['恢复链路', 'ok'] : ['断开此链路', 'warn'], linkber: model.linkFault[l] === 2 ? ['清除误码', 'ok'] : ['注入误码', ''] },
         }),
       };
     }
@@ -737,12 +756,13 @@ function inspector(app, sel) {
       return {
         kick: `${NET[c.net].sub} · ${NET[c.net].label}`, title: c.label, zh: true, color: NET_CSS[c.net],
         html: kv([['状态', L('state', '')], ['接口', cableKind(c)], ['规划端口', `<span class="mono">${c.home.unit.id}</span> ${esc(c.home.label)}`], ['当前位置', L('pos', '')], ['对端', esc(farName(app, c))], ['入向 / 出向', L('util')]]) +
-          `<div class="row">${btn('cable', c.state === 'plugged' && c.port === c.home ? '拔出' : '插回规划端口', c.state === 'plugged' && c.port === c.home ? 'warn' : 'ok')}</div>
+          `<div class="row">${liveBtn('cable')}</div>
           <p class="note">${c.net === 'ib' ? '后端网络：跨机柜的 GPU 集群通信。每个托盘的 4 个 ConnectX-7 分别接到 4 台 IB Leaf，由 UFM 管理与采集。' : c.net === 'eth' ? '前端网络：存储、带内管理与业务访问。每块 BlueField-3 的两个口分别接到 A、B 两台前端交换机，连线由 LLDP 发现。' : '带外管理网：BMC 与 NVOS 管理口，承载 Redfish 与 NMX 的控制和遥测。采集点都在交换机或 BMC 一侧，不在租户主机内。'}</p>`,
         live: () => ({
           state: cableState(app, c),
           pos: c.port ? `<span class="mono">${c.port.unit.id}</span> ${esc(c.port.label)}` : '悬空',
           util: cabling.linkState(c) === 2 ? `${fmtRate(sim.cableIn[c.id] * cap)} / ${fmtRate(sim.cableOut[c.id] * cap)}` : '—',
+          btns: { cable: c.state === 'plugged' && c.port === c.home ? ['拔出', 'warn'] : ['插回规划端口', 'ok'] },
         }),
       };
     }
@@ -760,12 +780,12 @@ function inspector(app, sel) {
       return {
         kick: 'NVLink 线缆背板 · 无源铜缆', title: c.name, zh: true, color: 'var(--nv)',
         html: kv([['状态', L('state', '')], ['承载链路', '324 条 · 1,296 对差分线'], ['在线', L('links')], ['计算托盘侧', `18 个托盘的 gpu-0${k + 1}，各 18 口`], ['交换托盘侧', '9 个托盘，各 36 口']]) +
-          `<div class="row">${btn('cart', c.pullTarget > 0.01 ? '插回背板' : '拔出背板', c.pullTarget > 0.01 ? 'ok' : 'warn')}</div>
+          `<div class="row">${liveBtn('cart')}</div>
           <p class="note">4 个背板内共 5,184 对铜缆，现场没有逐根插拔的 NVLink 线缆，可更换单元是背板整体。背板与 GPU 编号的对应是本模型的假设，公开资料没有给出。</p>`,
         live: () => {
           let up = 0;
           for (let g = k; g < N_GPU; g += 4) up += model.gpuLinksUp(g);
-          return { state: c.seated ? '<span class="st ok">已对接</span>' : '<span class="st bad">已拔出</span>', links: `${up} / 324` };
+          return { state: c.seated ? '<span class="st ok">已对接</span>' : '<span class="st bad">已拔出</span>', links: `${up} / 324`, btns: { cart: c.pullTarget > 0.01 ? ['插回背板', 'ok'] : ['拔出背板', 'warn'] } };
         },
       };
     }

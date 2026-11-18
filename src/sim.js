@@ -201,6 +201,13 @@ export class Sim {
     if (st.shelves !== shelves) this.dirty = true;
     st.shelves = shelves;
     st.capKW = capKW;
+    // no shelf seated: nothing feeds the busbar, every tray goes dark
+    const off = shelves === 0;
+    if (model.powerOff !== off) {
+      model.powerOff = off;
+      model.recomputePhys(now);
+      this.dirty = true;
+    }
 
     if (this.dirty) this.recompute();
     const k = this._burstK();
@@ -251,11 +258,11 @@ export class Sim {
 
     // ---- GPU load, temperatures, power ----
     const I = this.intensity * st.cap * k;
-    let pKW = 0.6; // management switches, losses
+    let pKW = off ? 0 : 0.6; // management switches, losses
     st.supplyC = 32;
     for (const tray of model.compute) {
       let load = 0;
-      const on = tray.seated && !tray.fault;
+      const on = tray.seated && !tray.fault && !off;
       for (let nn = 0; nn < 4; nn++) {
         const g = tray.trayIndex * 4 + nn;
         const alive = on && !model.gpuFault[g];
@@ -270,7 +277,7 @@ export class Sim {
       pKW += tray.kw;
     }
     for (const sw of model.switches) {
-      const on = sw.seated && !sw.fault;
+      const on = sw.seated && !sw.fault && !off;
       let thr = 0;
       for (let c = 0; c < 2; c++) {
         const s = sw.swTray * 2 + c;
@@ -283,10 +290,18 @@ export class Sim {
       pKW += sw.kw;
     }
     st.powerKW = pKW;
-    // power capping: demand above what the seated shelves can deliver throttles the GPUs
-    const wantCap = capKW <= 0 ? 0 : pKW > capKW ? Math.max(0.05, st.cap * (capKW / pKW) * 0.995) : Math.min(1, st.cap + dt * 0.25);
-    if (Math.abs(wantCap - st.cap) > 0.004) {
-      st.cap = wantCap;
+    // power capping: demand above what the seated shelves can deliver throttles the GPUs.
+    // The controller runs on a continuous value so that its behaviour does not depend on the step size.
+    let raw = this._capRaw ?? 1;
+    if (capKW <= 0) raw = 0;
+    else {
+      const ratio = pKW / capKW;
+      if (ratio > 1) raw = Math.max(0.05, raw - (ratio - 1) * raw * Math.min(1, dt * 1.5));
+      else if (ratio < 0.97) raw = Math.min(1, Math.max(raw, 0.05) + dt * 0.25);
+    }
+    this._capRaw = raw;
+    if (Math.abs(raw - st.cap) > 0.004 || (raw !== st.cap && (raw === 1 || raw === 0))) {
+      st.cap = raw;
       this.dirty = true;
     }
     st.returnC = st.supplyC + 13.3 * (pKW / 120);
@@ -391,8 +406,9 @@ export class Sim {
     if (this.stats.congested > 0) add('congestion', 'info', `拥塞 · ${this.stats.congested} 个端口`, 'XmitWait 与 XmitData 的比值超过 1%：属于作业的流量形态，平台侧没有硬件动作', null);
     if (this.stats.nvBlocked > 1) add('blocked', 'warn', '部分 GPU 之间不可达', `约 ${(this.stats.nvBlocked / 1000).toFixed(1)} Tb/s 的需求没有可用路径`, null);
     const st = this.stats;
-    if (st.shelves < 8 && st.shelves >= 4 && st.cap >= 0.999) add('psu', 'warn', `电源冗余下降 · ${st.shelves}/8 架`, `可用 ${st.capKW} kW，当前 ${st.powerKW.toFixed(0)} kW；N+N 冗余已不完整`, null);
-    if (st.cap < 0.999) add('cap', 'crit', `功率封顶 · 可用 ${st.capKW} kW`, `电源架不足以承载整柜负载，GPU 被限功率到 ${(st.cap * 100).toFixed(0)}%`, null);
+    if (st.shelves === 0) add('poweroff', 'crit', '整柜失电', '8 个电源架全部脱开，汇流排无电，所有托盘下电', { type: 'busbar', id: 0 });
+    else if (st.cap < 0.999) add('cap', 'crit', `功率封顶 · 可用 ${st.capKW} kW`, `电源架不足以承载整柜负载，GPU 被限功率到 ${(st.cap * 100).toFixed(0)}%`, { type: 'busbar', id: 0 });
+    else if (st.shelves < 8) add('psu', 'warn', `电源冗余下降 · ${st.shelves}/8 架`, st.shelves >= 4 ? `可用 ${st.capKW} kW，当前 ${st.powerKW.toFixed(0)} kW；N+N 冗余已不完整` : `可用 ${st.capKW} kW，当前 ${st.powerKW.toFixed(0)} kW；已无冗余，负载再升就会被限功率`, { type: 'busbar', id: 0 });
     const cs = this.cabling.summary();
     if (cs.open.length) add('cable-open', 'warn', `前面板线缆未接 · ${cs.open.length} 根`, '对应的 IB、以太网或带外链路为 down', { type: 'cable', id: cs.open[0].id });
     if (cs.wrong.length) add('cable-wrong', 'warn', `接线与规划不符 · ${cs.wrong.length} 根`, 'LLDP / UFM 发现的对端与接线表不一致', { type: 'cable', id: cs.wrong[0].id });

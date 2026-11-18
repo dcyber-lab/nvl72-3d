@@ -49,6 +49,7 @@ export class Leds {
   // code: 0 off, 1 green, 2 amber, 3 red, 4 blue, 5 white
   set(i, code, gain = 1) {
     const it = this.items[i];
+    if (!it) return;
     const key = code * 100 + Math.round(gain * 20);
     if (it.code === key) return;
     it.code = key;

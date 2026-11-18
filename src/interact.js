@@ -62,7 +62,7 @@ export class Interaction {
     el.addEventListener('pointermove', (e) => this.onMove(e));
     el.addEventListener('pointerup', (e) => this.onUp(e));
     el.addEventListener('pointercancel', (e) => this.onUp(e, true));
-    el.addEventListener('pointerleave', () => { if (!this.drag) this.setHover(null); });
+    el.addEventListener('pointerleave', () => { this._hoverXY = null; if (!this.drag) this.setHover(null); });
     el.addEventListener('dblclick', (e) => this.onDbl(e));
     el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
@@ -166,13 +166,20 @@ export class Interaction {
 
   onDown(e) {
     if (e.button !== 0) return;
+    // a press whose release never arrived must not block input for good
+    if (!this.drag && this.down && e.isPrimary && performance.now() - this.down.t > 1500) this.down = null;
+    // one gesture at a time: a second finger landing during a drag (or a pinch) starts nothing
+    if (this.drag || (this.down && this.down.id !== e.pointerId)) {
+      if (this.down) this.down.moved = true; // a multi-touch gesture is never a click
+      return;
+    }
     const app = this.app;
     app.pilot.cancel();
     const h = this.pick(e.clientX, e.clientY, { lines: false });
-    this.down = { x: e.clientX, y: e.clientY, t: performance.now(), hit: h, moved: false };
+    this.down = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), hit: h, moved: false };
     if (h && h.type === 'cable' && h.plug && (h.cable.state === 'plugged' || h.cable.state === 'free')) {
       // the plug is only pulled once the pointer actually moves; a plain click selects the cord
-      this.drag = { kind: 'plug', cable: h.cable, started: false };
+      this.drag = { kind: 'plug', id: e.pointerId, cable: h.cable, started: false };
       app.stage.controls.enabled = false;
       this.el.setPointerCapture(e.pointerId);
       this.el.style.cursor = 'grabbing';
@@ -185,8 +192,8 @@ export class Interaction {
       const r = this.el.getBoundingClientRect();
       const dx = ((_p1.x - _p0.x) * r.width) / 2, dy = (-(_p1.y - _p0.y) * r.height) / 2;
       const len2 = dx * dx + dy * dy;
-      this.drag = { kind: 'tray', unit: u, start: u.pull, dx, dy, len2, x: e.clientX, y: e.clientY };
-      app.select({ type: 'unit', id: u.id });
+      this.drag = { kind: 'tray', id: e.pointerId, unit: u, start: u.pull, dx, dy, len2, x: e.clientX, y: e.clientY };
+      app.select({ type: 'unit', id: u.id }, { noTab: true });
       app.stage.controls.enabled = false;
       this.el.setPointerCapture(e.pointerId);
       app.ui.tooltip(null);
@@ -196,8 +203,9 @@ export class Interaction {
 
   onMove(e) {
     const app = this.app;
-    if (this.down && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 5) this.down.moved = true;
+    if (this.down && this.down.id === e.pointerId && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 5) this.down.moved = true;
     if (this.drag) {
+      if (e.pointerId !== this.drag.id) return;
       if (this.drag.kind === 'plug') {
         const g = this.drag;
         if (!g.started && this.down && this.down.moved) {
@@ -218,16 +226,27 @@ export class Interaction {
       }
       return;
     }
-    if (e.buttons) return; // orbiting
+    if (e.buttons || e.pointerType === 'touch') return; // orbiting, or no hover on touch
+    // throttle picking, but always handle the last position so the tooltip never lags behind
+    this._hoverXY = [e.clientX, e.clientY];
     const now = performance.now();
-    if (now - this._lastHover < 45) return;
-    this._lastHover = now;
-    if (e.pointerType === 'touch') return;
-    this.setHover(this.pick(e.clientX, e.clientY), e.clientX, e.clientY);
+    if (now - this._lastHover >= 45) this._doHover();
+    else if (!this._hoverTimer) this._hoverTimer = setTimeout(() => this._doHover(), 50);
+  }
+
+  _doHover() {
+    clearTimeout(this._hoverTimer);
+    this._hoverTimer = 0;
+    if (this.drag || !this._hoverXY) return;
+    this._lastHover = performance.now();
+    const [x, y] = this._hoverXY;
+    this.setHover(this.pick(x, y), x, y);
   }
 
   onUp(e, cancelled = false) {
     const app = this.app;
+    if (this.drag && e.pointerId !== this.drag.id) return; // another finger lifting does not end the drag
+    if (!this.drag && this.down && this.down.id !== e.pointerId) return;
     const dn = this.down;
     this.down = null;
     if (this.drag) {

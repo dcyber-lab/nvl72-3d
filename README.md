@@ -55,10 +55,16 @@ python3 -m http.server 8765
 
 然后打开 <http://127.0.0.1:8765/>。
 
-模型自检（接线规则、流量与故障形状的数值）：
+模型自检（接线规则、流量、故障形状与功率封顶的数值）：
 
 ```bash
 node tools/simtest.mjs
+```
+
+线缆状态机与绳索求解器的回归检查（拔插、错接、够不着、托盘拉脱、自动接线）：
+
+```bash
+node --experimental-loader ./tools/three-loader.mjs tools/cabletest.mjs
 ```
 
 `tools/` 下的 `e2e-*.js` 是用 Playwright 驱动真实鼠标操作的冒烟脚本（拔插线缆、拉出托盘、导览、绳索稳定性），需要本地静态服务器跑在 8765 端口：
