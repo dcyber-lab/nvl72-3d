@@ -54,7 +54,9 @@ export function createStage(canvas, opts = {}) {
 
   // post-processing
   const size = new THREE.Vector2(1, 1);
-  const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: opts.samples ?? 4 });
+  // bloom needs a float render target; a few older mobile GPUs cannot render to one
+  const hdr = renderer.extensions.has('EXT_color_buffer_half_float') || renderer.extensions.has('EXT_color_buffer_float');
+  const target = new THREE.WebGLRenderTarget(1, 1, { type: hdr ? THREE.HalfFloatType : THREE.UnsignedByteType, samples: opts.samples ?? 4 });
   const composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.5, 1.25);
@@ -63,7 +65,7 @@ export function createStage(canvas, opts = {}) {
 
   const stage = {
     renderer, scene, camera, controls, composer, bloom,
-    bloomEnabled: opts.bloom ?? true,
+    bloomEnabled: (opts.bloom ?? true) && hdr,
     pixelWorld: { value: 1 }, // world units per pixel at unit distance
     viewH: 1,
     resize() {

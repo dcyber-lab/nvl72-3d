@@ -165,7 +165,11 @@ class App {
     model.on('links', () => { this._linksDirty = true; });
     model.on('cabling', () => { this._cablingDirty = true; });
     cabling.onEvent = (e) => {
-      if (e.type === 'yank') ui.toast('线缆被拉脱', `${e.cable.label}：托盘拉出前应先拔掉前面板线缆`, 'crit');
+      if (e.type === 'yank') {
+        // a tray dragged out with its cords still in pops all of them: say it once
+        if (this.wall - (this._lastYank || 0) > 2) ui.toast('线缆被拉脱', `${e.cable.home.unit.id}：托盘拉出前应先拔掉前面板线缆`, 'crit');
+        this._lastYank = this.wall;
+      }
       else if (e.type === 'plug') {
         const ok = e.port === e.cable.home;
         const p = e.port;

@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
     page.on('console', (m) => { if (m.type() === 'error') logs.push(`[error] ${m.text()}`); });
     page.on('pageerror', (e) => logs.push('[pageerror] ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 5).join('\n')));
     await page.goto(`http://127.0.0.1:8765/index.html?${query}`, { waitUntil: 'load' });
-    await page.waitForFunction(() => (window.__frames || 0) > 3, null, { timeout: 90000 }).catch(() => logs.push('[timeout] no frames'));
+    await page.waitForFunction(() => (window.__frames || 0) > 3, null, { timeout: 200000 }).catch(() => logs.push('[timeout] no frames'));
     if (js) { const r = await page.evaluate(js).catch((e) => 'EVAL ERROR ' + e.message); if (r !== undefined && r !== null) console.log(name, 'eval:', JSON.stringify(r)); }
     await page.waitForTimeout(+(wait || 1800));
     await page.screenshot({ path: `${outDir}/${name}.png` });

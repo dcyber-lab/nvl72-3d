@@ -4,6 +4,8 @@
 
 在线地址：<https://dcyber-lab.github.io/nvl72-3d/>
 
+![NVL72 3D 交互机柜：总览视角，带部件标注](assets/screenshot.jpg)
+
 ## 能做什么
 
 **物理连线与插拔**
