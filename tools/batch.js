@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
   for (const job of jobs) {
     const [name, rest] = [job.slice(0, job.indexOf('=')), job.slice(job.indexOf('=') + 1)];
     const [query, js, wait] = rest.split('::');
-    const page = await browser.newPage({ viewport: { width: +w, height: +h }, deviceScaleFactor: 1 });
+    const page = await browser.newPage({ viewport: { width: +w, height: +h }, deviceScaleFactor: +(process.env.DSF || 1) });
     const logs = [];
     page.on('console', (m) => { if (m.type() === 'error') logs.push(`[error] ${m.text()}`); });
     page.on('pageerror', (e) => logs.push('[pageerror] ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 5).join('\n')));

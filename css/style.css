@@ -202,7 +202,7 @@ input[type="range"]::-moz-range-thumb { width: 11px; height: 11px; border-radius
   position: fixed; left: 316px; right: 360px; bottom: 12px; height: var(--kpi); z-index: 10;
   display: flex; align-items: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(12px); overflow: hidden;
 }
-.kpi { flex: 1 1 0; min-width: 0; padding: 8px 12px 0; border-left: 1px solid var(--line-soft); display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.kpi { flex: 1 1 0; min-width: 0; padding: 8px 12px 0; border-left: 1px solid var(--line-soft); display: flex; flex-direction: column; justify-content: center; gap: 1px; overflow: hidden; }
 .kpi:first-child { border-left: 0; flex: 1.5 1 0; }
 .kpi .k { font-size: 11px; color: var(--mute); white-space: nowrap; display: flex; align-items: center; gap: 6px; }
 .kpi .k i { width: 7px; height: 7px; border-radius: 2px; background: var(--c); }
@@ -264,6 +264,9 @@ dialog td:first-child { color: var(--ink); white-space: nowrap; font-weight: 600
 #tabs { display: none; }
 
 /* ---- medium screens: tighten ---- */
+@media (max-width: 1560px) {
+  .kpi.opt2 { display: none; }
+}
 @media (max-width: 1240px) {
   #left { width: 264px; }
   #right { width: 300px; }

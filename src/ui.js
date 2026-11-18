@@ -198,11 +198,11 @@ export function createUI(app) {
   const KP = [
     ['nv', 'NVLink 吞吐', NET_CSS.nv, true, ''],
     ['links', 'NVLink 链路', '#6fd3a3', false, ''],
-    ['gpus', 'GPU 在域', '#6fd3a3', false, 'opt'],
+    ['gpus', 'GPU 在域', '#6fd3a3', false, 'opt opt2'],
     ['ib', 'InfiniBand', NET_CSS.ib, false, 'opt'],
     ['eth', '以太网', NET_CSS.eth, false, 'opt'],
     ['pwr', '整柜功耗', NET_CSS.pwr, true, ''],
-    ['liq', '液冷 供 → 回', NET_CSS.liq, false, 'opt'],
+    ['liq', '液冷 供 → 回', NET_CSS.liq, false, 'opt opt2'],
   ];
   $('kpis').innerHTML = KP.map(([k, t, c, m, cls]) => `<div class="kpi ${cls}" style="--c:${c}"><div class="k"><i></i>${t}</div><div class="v" id="k-${k}"></div>${m ? `<div class="meter"><i id="m-${k}"></i></div>` : ''}</div>`).join('');
   ui.syncKpis = () => {
@@ -262,7 +262,7 @@ export function createUI(app) {
   };
 
   // ---- alerts ----------------------------------------------------------------
-  let alertSig = '';
+  let alertSig = null; // null so the empty state is rendered on the first pass
   ui.syncAlerts = () => {
     const a = sim.alerts;
     const sig = a.map((x) => x.key + x.title + x.detail).join('|');
@@ -478,11 +478,13 @@ export function createUI(app) {
       labelEls.push({ el, d });
     }
   };
-  ui.placeLabels = (project, camZ, on) => {
+  // dir: unit vector from the orbit target to the camera; a label shows only when its face is in view
+  ui.placeLabels = (project, dir, on) => {
     for (const { el, d } of labelEls) {
       let vis = on;
-      if (vis && d.face === 'front' && camZ < 0.25) vis = false;
-      if (vis && d.face === 'rear' && camZ > -0.25) vis = false;
+      if (vis && d.face === 'front') vis = dir.z > 0.42;
+      else if (vis && d.face === 'rear') vis = dir.z < -0.42;
+      else if (vis && d.face === 'side') vis = Math.abs(dir.x) > 0.8;
       const p = vis ? project(d.pos) : null;
       if (!p) { if (el.style.opacity !== '0') el.style.opacity = 0; continue; }
       el.style.opacity = 1;

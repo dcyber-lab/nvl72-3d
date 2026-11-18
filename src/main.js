@@ -775,6 +775,8 @@ class App {
       case 'cable': {
         const c = model.cables[sel.id];
         if (c.state === 'plugged' && c.port === c.home) cabling.unplug(c);
+        else if (c.home.cable && c.home.cable !== c) this.ui.toast('端口被占用', `${c.home.unit.id} · ${c.home.label} 上插着 ${c.home.cable.label}，先把它拔掉`, 'crit');
+        else if (Math.abs(c.home.unit.pull) > 0.02) this.ui.toast('托盘未到位', `${c.home.unit.id} 还在机柜外，推回后再接线`, 'crit');
         else cabling.rehome(c);
         this.after(0.5, () => this.ui.renderInspector());
         return;
@@ -807,7 +809,13 @@ class App {
       { text: '回液歧管', sub: '温水回 CDU', pos: [MANI_RETURN_X, yS(8), Z_REAR - 0.08], face: 'rear', color: '#ff9d8f', right: true },
       { text: '供液歧管', sub: '冷板液冷：CPU、GPU、NVSwitch', pos: [MANI_SUPPLY_X, yS(3), Z_REAR - 0.08], face: 'rear', color: 'var(--liq)' },
       { text: '交换托盘后部', sub: '每个背板位 36 口', pos: [CART_X[1], yS(13), Z_REAR - 0.03], face: 'rear', color: 'var(--nv)', right: true },
+      { text: '后部 · 盲插', sub: 'NVLink、汇流排、液冷', pos: [-0.305, yS(27) + 0.16, Z_REAR - 0.1], face: 'side', color: 'var(--nv)', right: true },
+      { text: '线缆背板 × 4', sub: '无源铜缆 5,184 对', pos: [-0.305, yS(21), CART.zFace - 0.08], face: 'side', color: 'var(--nv)', right: true },
+      { text: '液冷歧管', sub: '供液与回液', pos: [-0.305, yS(4), Z_REAR - 0.06], face: 'side', color: 'var(--liq)', right: true },
+      { text: '正面 · 人工布线', sub: 'InfiniBand、以太网、管理网', pos: [-0.305, yS(23), 0.58], face: 'side', color: 'var(--ib)' },
+      { text: '托盘从正面推入', sub: '后端与背板、汇流排、歧管对接', pos: [-0.305, yS(13), 0.1], face: 'side', color: '#c9d4dc' },
     ]);
+    this._camDir = new THREE.Vector3();
     this._proj = new THREE.Vector3();
   }
 
@@ -859,9 +867,10 @@ class App {
     if (!this.paused) sim.step(sdt, this.simTime);
     cabling.update(dt, wall);
     if (this._linksDirty) {
+      // link changes only touch live values, which syncInspector() refreshes without
+      // replacing the buttons someone may be in the middle of clicking
       this._linksDirty = false;
       this._cablingDirty = true;
-      ui.renderInspector();
     }
     if (this._cablingDirty) {
       this._cablingDirty = false;
@@ -918,7 +927,7 @@ class App {
     stage.controls.update();
     if (!this.paused) this.animTime += dt * this.speed;
     tickRibbons(this.animTime, wall);
-    ui.placeLabels(this._project, stage.camera.position.z, this.labelsOn);
+    ui.placeLabels(this._project, this._camDir.copy(stage.camera.position).sub(stage.controls.target).normalize(), this.labelsOn);
     stage.render();
 
     // adaptive quality: drop bloom, then resolution, if the device cannot keep up
