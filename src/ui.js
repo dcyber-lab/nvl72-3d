@@ -18,7 +18,7 @@ const fmtBytes = (b) => {
 const pct = (x) => `${Math.round(x * 100)}%`;
 
 // same ramp as the ribbon shader's heat mode, in display space
-const RAMP = [[0, [22, 50, 66]], [0.5, [28, 140, 104]], [1, [150, 255, 205]]];
+const RAMP = [[0, [22, 50, 66]], [0.5, [26, 128, 97]], [1, [118, 232, 180]]];
 export function heatCss(x) {
   x = Math.max(0, Math.min(1, x));
   for (let i = 1; i < RAMP.length; i++) {
@@ -28,7 +28,7 @@ export function heatCss(x) {
       return `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},${Math.round(a[2] + (b[2] - a[2]) * t)})`;
     }
   }
-  return 'rgb(150,255,205)';
+  return 'rgb(118,232,180)';
 }
 
 const NET_CSS = { nv: 'var(--nv)', ib: 'var(--ib)', eth: 'var(--eth)', oob: 'var(--oob)', pwr: 'var(--pwr)', liq: 'var(--liq)' };
@@ -258,7 +258,7 @@ export function createUI(app) {
     el.innerHTML = `<b>${esc(title)}</b>${esc(text || '')}`;
     $('log').appendChild(el);
     while ($('log').children.length > 3) $('log').firstChild.remove();
-    setTimeout(() => el.remove(), 4300);
+    setTimeout(() => el.remove(), 4700);
   };
 
   // ---- alerts ----------------------------------------------------------------

@@ -126,8 +126,8 @@ export class Cabling {
     const cables = model.cables;
 
     this.mat = {
-      ib: makeRibbonMaterial({ jacket: 0x2f62d6, glowA: 0x6f9bff, glowB: 0xa9d4ff, radius: 0.0017, minPx: 1.3, spacing: 0.1, speed: 1.15, gain: 2.2, downMix: 0.5 }),
-      eth: makeRibbonMaterial({ jacket: 0xc9731f, glowA: 0xffa23a, glowB: 0xffd98a, radius: 0.0019, minPx: 1.3, spacing: 0.1, speed: 1.05, gain: 2.0, downMix: 0.5 }),
+      ib: makeRibbonMaterial({ jacket: 0x2f62d6, glowA: 0x6f9bff, glowB: 0xa9d4ff, radius: 0.0017, minPx: 1.3, spacing: 0.1, speed: 1.15, gain: 1.7, downMix: 0.5 }),
+      eth: makeRibbonMaterial({ jacket: 0xc9731f, glowA: 0xffa23a, glowB: 0xffd98a, radius: 0.0019, minPx: 1.3, spacing: 0.1, speed: 1.05, gain: 1.6, downMix: 0.5 }),
       oob: makeRibbonMaterial({ jacket: 0x5d6975, glowA: 0xc3d0db, glowB: 0xf0f5f8, radius: 0.0021, minPx: 1.3, spacing: 0.075, speed: 0.7, gain: 1.5, downMix: 0.5 }),
     };
 

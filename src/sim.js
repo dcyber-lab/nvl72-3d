@@ -70,7 +70,7 @@ export class Sim {
     this.telemetryOk = true;
     this.pollPhase = 0;
     this._alertT = 0;
-    this._alertKeys = new Set();
+    this._alertSeen = new Map();
     this.onAlert = () => {};
     model.on('links', () => (this.dirty = true));
   }
@@ -398,10 +398,20 @@ export class Sim {
     if (cs.wrong.length) add('cable-wrong', 'warn', `接线与规划不符 · ${cs.wrong.length} 根`, 'LLDP / UFM 发现的对端与接线表不一致', { type: 'cable', id: cs.wrong[0].id });
     for (const u of model.units) if (u.leak) add(`leak-${u.id}`, 'crit', `漏液告警 · ${u.id}`, '托盘内漏液传感器触发，由 BMC Redfish 上报', { type: 'unit', id: u.id });
 
+    // announce an alert only once it has held for three evaluations (~1.2 s), so the
+    // brief states while links retrain do not raise notifications
     const keys = new Set(out.map((a) => a.key));
-    for (const a of out) if (!this._alertKeys.has(a.key)) this.onAlert(a, true);
-    for (const k of this._alertKeys) if (!keys.has(k)) this.onAlert({ key: k }, false);
-    this._alertKeys = keys;
+    const seen = this._alertSeen;
+    for (const a of out) {
+      const n = (seen.get(a.key) || 0) + 1;
+      seen.set(a.key, n);
+      if (n === 3) this.onAlert(a, true);
+    }
+    for (const k of [...seen.keys()]) {
+      if (keys.has(k)) continue;
+      if (seen.get(k) >= 3) this.onAlert({ key: k }, false);
+      seen.delete(k);
+    }
     this.alerts = out;
   }
 

@@ -152,6 +152,7 @@ class App {
     this.onLayout();
     this._applyQuery();
 
+    if (!q.get('tour') && !q.get('fault')) this.after(2.6, () => { if (!this.tour.active) this.ui.toast('试试', '按住插头拖动可拔插 · 拖动托盘两侧把手可拉出 · 右上角“导览”带你走一遍', 'info'); });
     this._last = performance.now();
     this._uiT = 0;
     this._slow = 0;
@@ -173,7 +174,7 @@ class App {
       }
     };
     sim.onAlert = (a, raised) => {
-      if (this._quiet) return;
+      if (this._quiet || this.simTime < 4) return; // stay silent while the fabric first trains up
       if (raised) ui.toast(a.sev === 'info' ? '提示' : '告警', `${a.title}`, a.sev === 'info' ? 'info' : 'crit');
     };
     window.addEventListener('resize', () => { this.stage.resize(); this.onLayout(true); });

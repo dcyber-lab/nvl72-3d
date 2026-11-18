@@ -59,9 +59,15 @@ python3 -m http.server 8765
 node tools/simtest.mjs
 ```
 
+`tools/` 下的 `e2e-*.js` 是用 Playwright 驱动真实鼠标操作的冒烟脚本（拔插线缆、拉出托盘、导览、绳索稳定性），需要本地静态服务器跑在 8765 端口：
+
+```bash
+node tools/e2e-plug.js /tmp
+```
+
 ## 模型依据
 
-取自 NVIDIA 公开资料的部分：机柜尺寸与 48U 布局、托盘数量与组成、每条 NVLink 的速率、后部“歧管 – 2 背板 – 汇流排 – 2 背板 – 歧管”的排列、电源架规格、液冷范围。
+取自 NVIDIA 与整机厂商公开资料的部分：机柜尺寸与 48U 布局、托盘数量与组成、每条 NVLink 的速率、后部“歧管 – 2 背板 – 汇流排 – 2 背板 – 歧管”的排列、电源架规格、液冷范围。
 
 接线规则：GPU 端口 `p` 去往 `slot = 9 + ⌊(p − 1) / 2⌋`，奇数口到 `swt-01`，偶数口到 `swt-02`；NVSwitch 端口号 `= 4 × tray_index + NN`。
 
