@@ -140,8 +140,9 @@ export function createTour(app) {
       if (tour.active && prev && prev.leave) prev.leave();
       tour.i = Math.max(0, Math.min(steps.length - 1, i));
       reset();
-      steps[tour.i].enter();
       app.ui.tour(steps[tour.i], tour.i, steps.length);
+      app.onLayout(); // the card's height changes the free area before the step frames its shot
+      steps[tour.i].enter();
       app.ui.syncToggles();
       app.ui.syncTraffic();
     },
@@ -160,6 +161,7 @@ export function createTour(app) {
       tour.active = false;
       app._quiet = false;
       app.ui.tour(null);
+      app.onLayout();
     },
   };
   return tour;

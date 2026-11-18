@@ -151,11 +151,13 @@ export function buildRack(model, M) {
     b.box(0.006, 0.12, 0.022, CART_X[k], (y0 + y1) / 2 + 0.3, CART.zFace - CART.D - 0.011, 0x2e9e6b);
     b.box(0.006, 0.12, 0.022, CART_X[k], (y0 + y1) / 2 - 0.3, CART.zFace - CART.D - 0.011, 0x2e9e6b);
     const hw = b.mesh(M.inner);
+    hw.userData.pick = { type: 'cart', id: k };
     g.add(hw);
+    picks.push(hw);
     const shell = new THREE.Mesh(new THREE.BoxGeometry(CART.W - 0.001, hC - 0.012, CART.D - 0.001), M.cartShell);
     shell.position.set(CART_X[k], (y0 + y1) / 2, zc);
     shell.renderOrder = 4;
-    shell.userData.pick = { type: 'cart', id: k };
+    shell.userData.pick = { type: 'cart', id: k, shell: true }; // see-through: links inside can be picked
     g.add(shell);
     picks.push(shell);
     const tag = labelPlane(`NVLink 线缆背板 ${k + 1}`, 0.016, { color: '#6FD3A3', font: '600 40px "IBM Plex Sans", "Noto Sans SC", sans-serif' });

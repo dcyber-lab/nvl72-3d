@@ -271,12 +271,12 @@ dialog td:first-child { color: var(--ink); white-space: nowrap; font-weight: 600
   .kpi.opt { display: none; }
   #tour { width: min(520px, calc(100vw - 620px)); min-width: 320px; }
 }
-@media (max-width: 1020px) {
+@media (max-width: 1120px) {
   .views { display: none; }
 }
 
 /* ---- phones / narrow: bottom sheet with tabs ---- */
-@media (max-width: 860px) {
+@media (max-width: 980px) {
   :root { --top: 48px; --kpi: 0px; --sheet: 44vh; }
   .brand p { display: none; }
   #topbar { gap: 8px; padding: 0 10px; }

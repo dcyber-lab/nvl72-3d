@@ -326,7 +326,9 @@ export function buildUnits(model, M, leds) {
         mesh.userData.pick = { type: 'gpu', id };
         const lid = new THREE.Mesh(gpuLidGeo, M.steel);
         lid.position.y = 0.009;
+        lid.userData.pick = mesh.userData.pick;
         mesh.add(lid);
+        out.picks.push(lid);
         g.add(mesh);
         out.gpuMesh[id] = mesh;
         out.picks.push(mesh);

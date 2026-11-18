@@ -543,7 +543,7 @@ export class Cabling {
       }
       this.hints.instanceColor.needsUpdate = true;
     }
-    const steps = Math.max(1, Math.min(3, Math.round(dt / (1 / 90))));
+    const steps = Math.max(1, Math.min(2, Math.round(dt / (1 / 75))));
     for (const c of this.active) {
       let keep = true;
       if (c.state === 'extracting') {
@@ -637,7 +637,7 @@ export class Cabling {
       p[k] += vx; p[k + 1] += vy + g * (i === N - 1 ? 1.6 : 1); p[k + 2] += vz;
       moved += Math.abs(vx) + Math.abs(vy) + Math.abs(vz);
     }
-    for (let it = 0; it < 12; it++) {
+    for (let it = 0; it < 10; it++) {
       for (let i = 0; i < N - 1; i++) {
         const k = i * 3;
         let dx = p[k + 3] - p[k], dy = p[k + 4] - p[k + 1], dz = p[k + 5] - p[k + 2];

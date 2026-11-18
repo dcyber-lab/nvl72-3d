@@ -239,6 +239,8 @@ class App {
       r = document.getElementById('right').offsetWidth + 16;
       b = 76;
     }
+    const tourEl = document.getElementById('tour');
+    if (!tourEl.hidden) b += tourEl.offsetHeight + 14; // keep the subject clear of the tour card
     cam.setViewOffset(w, h, (r - l) / 2, (b - t) / 2, w, h);
     cam.updateProjectionMatrix();
     this.insets = { l, r, t, b };
@@ -988,5 +990,17 @@ class App {
   }
 }
 
-const app = new App();
-window.__nvl = app;
+function boot() {
+  const probe = document.createElement('canvas').getContext('webgl2');
+  if (!probe) {
+    document.querySelector('#boot div').innerHTML = '<b>NVL72</b>这个页面需要 WebGL 2。请换用较新的 Chrome、Edge、Firefox 或 Safari，并确认已开启硬件加速。';
+    return;
+  }
+  try {
+    window.__nvl = new App();
+  } catch (err) {
+    console.error(err);
+    document.querySelector('#boot div').innerHTML = `<b>NVL72</b>初始化失败：${String(err && err.message ? err.message : err).replace(/[<>&]/g, '')}`;
+  }
+}
+boot();

@@ -232,7 +232,7 @@ export function createUI(app) {
     const b = e.target.closest('button');
     if (b) ui.setTab(document.body.dataset.tab === b.dataset.tab ? '' : b.dataset.tab);
   });
-  ui.isNarrow = () => window.matchMedia('(max-width: 860px)').matches;
+  ui.isNarrow = () => window.matchMedia('(max-width: 980px)').matches;
 
   // ---- tooltip ---------------------------------------------------------------
   const tip = $('tooltip');

@@ -105,7 +105,8 @@ export class Interaction {
         res = port ? { type: 'port', port, unit: pk.unit, t: first.t } : { type: 'unit', unit: pk.unit, t: first.t, latch: Math.abs(first.point.x) > 0.204 && first.point.z > Z_FRONT - 0.01 };
       } else res = { ...pk, t: first.t };
     }
-    if (lines) {
+    // a tray's latch stays grabbable even though patch cords cross in front of it
+    if (lines && !(res && res.type === 'unit' && res.latch && this.app.canPull(res.unit))) {
       const lh = this.pickLines(ray, solidT);
       if (lh && (!res || lh.t < res.t + (first && first.soft ? 2 : 0.004))) res = lh;
     }
@@ -185,6 +186,7 @@ export class Interaction {
       const dx = ((_p1.x - _p0.x) * r.width) / 2, dy = (-(_p1.y - _p0.y) * r.height) / 2;
       const len2 = dx * dx + dy * dy;
       this.drag = { kind: 'tray', unit: u, start: u.pull, dx, dy, len2, x: e.clientX, y: e.clientY };
+      app.select({ type: 'unit', id: u.id });
       app.stage.controls.enabled = false;
       this.el.setPointerCapture(e.pointerId);
       app.ui.tooltip(null);
@@ -240,7 +242,7 @@ export class Interaction {
       } else {
         const u = g.unit;
         app.setPull(u, u.pull < 0.045 ? 0 : u.pull, false);
-        if (dn && !dn.moved) app.select({ type: 'unit', id: u.id });
+        app.ui.renderInspector();
       }
       return;
     }
